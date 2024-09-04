@@ -1,17 +1,19 @@
-from transformers_cfg.tokenization.SUPPORTED_TOKENIZERS import SUPPORTED_TOKENIZERS
-from .ByteProxyMapping import ByteProxyMapping, LLAMAByteProxyMapper
 import logging
-from transformers import (
-    GPT2TokenizerFast,
-    BartTokenizerFast,
-    T5TokenizerFast,
-    CodeGenTokenizerFast,
-    LlamaTokenizerFast,
-    PreTrainedTokenizerFast,
-    GemmaTokenizerFast
-)
 
+from transformers import (BartTokenizerFast, CodeGenTokenizerFast,
+                          GemmaTokenizerFast, GPT2TokenizerFast,
+                          LlamaTokenizerFast, PreTrainedTokenizerFast,
+                          T5TokenizerFast)
+from transformers_cfg.tokenization.SUPPORTED_TOKENIZERS import \
+    SUPPORTED_TOKENIZERS
 from transformers_cfg.tokenization.utils import get_tokenizer_charset
+
+try:
+    from transformers import Qwen2TokenizerFast
+except ImportError:
+    Qwen2TokenizerFast = None
+
+from .ByteProxyMapping import ByteProxyMapping, LLAMAByteProxyMapper
 
 log = logging.getLogger(__name__)
 
@@ -28,7 +30,9 @@ class TokenizerMiddleMapping:
         return self._length
 
     def map(self, token_id: int, verbose=False) -> bytes:
-        raise NotImplementedError("This method should be implemented in the subclass")
+        raise NotImplementedError(
+            "This method should be implemented in the subclass"
+        )
 
     @classmethod
     def from_hf_tokenizer(cls, hf_tokenizer):
@@ -36,20 +40,29 @@ class TokenizerMiddleMapping:
             type(hf_tokenizer) in SUPPORTED_TOKENIZERS
         ), f"Tokenizer not supported: {hf_tokenizer.__class__.__name__}, supported tokenizers: {SUPPORTED_TOKENIZERS}"
         if isinstance(
-            hf_tokenizer, (GPT2TokenizerFast, BartTokenizerFast, CodeGenTokenizerFast)
+            hf_tokenizer,
+            (GPT2TokenizerFast, BartTokenizerFast, CodeGenTokenizerFast),
         ):
             return GPT2TokenizerMiddleMapping(hf_tokenizer)
-        elif isinstance(hf_tokenizer, (LlamaTokenizerFast, GemmaTokenizerFast)):
+        elif isinstance(
+            hf_tokenizer, (LlamaTokenizerFast, GemmaTokenizerFast)
+        ):
             # deepseek, though inheriting from LlamaTokenizerFast, is actually a GPT2TokenizerFast
             # check https://github.com/epfl-dlab/transformers-CFG/issues/72
-            if hf_tokenizer.name_or_path.startswith("deepseek-ai/deepseek-coder"):
+            if hf_tokenizer.name_or_path.startswith(
+                "deepseek-ai/deepseek-coder"
+            ):
                 return GPT2TokenizerMiddleMapping(hf_tokenizer)
             return LLAMA1TokenizerMiddleMapping(hf_tokenizer)
         elif isinstance(hf_tokenizer, T5TokenizerFast):
             return T5TokenizerMiddleMapping(hf_tokenizer)
-        elif isinstance(
-            hf_tokenizer, PreTrainedTokenizerFast
-        ) and 'Meta-Llama-3' in hf_tokenizer.name_or_path:
+        elif Qwen2TokenizerFast is not None and isinstance(
+            hf_tokenizer, Qwen2TokenizerFast
+        ):
+            return GPT2TokenizerMiddleMapping(hf_tokenizer)
+        elif isinstance(hf_tokenizer, PreTrainedTokenizerFast) and (
+            "Meta-Llama-3" in hf_tokenizer.name_or_path
+        ):
             return GPT2TokenizerMiddleMapping(hf_tokenizer)
 
     @staticmethod
@@ -100,7 +113,10 @@ class LLAMA1TokenizerMiddleMapping(TokenizerMiddleMapping):
         # we need to check if the token is at the beginning of the sentence to remove the space
         # specific to BPE
         at_bos = False
-        if self.last_token_id is not None and self.last_token_id == self.bos_token_id:
+        if (
+            self.last_token_id is not None
+            and self.last_token_id == self.bos_token_id
+        ):
             at_bos = True
         self.last_token_id = token_id
 
